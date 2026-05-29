@@ -430,7 +430,7 @@ guimgr.overall-gui-state = {'windowing-policy': 'combined-window',
         'tab_location': 'top',
         'traversal_pos': ((0,
                            5),
-                          1780005135.1552663),
+                          1780005937.3705776),
         'user_data': {}},
                  'saved_notebook_display': None,
                  'split_percents': {},
@@ -538,4 +538,5 @@ proj.vcs-system-config = ('prefs',
 testing.stored-results = (1,
                           [],
                           {})
+versioncontrol.git.remote-history = ['https://github.com/Gio0938/cocomath.git']
 versioncontrol.show-unregistered-in-status = True
