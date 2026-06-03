@@ -80,12 +80,6 @@ def ejecutar_examen_diagnostico(
     num_preguntas: int = 10,
     nivel:         int = 1
 ) -> dict:
-    """
-    Ejecuta el examen diagnóstico.
-    El estudiante responde libremente.
-    El modelo predice el tipo de error según
-    su comportamiento (tiempo e intentos).
-    """
 
     pool = [
         ej for ej in ejercicios
@@ -104,75 +98,69 @@ def ejecutar_examen_diagnostico(
     print(f"Nivel              : {nivel}")
     print("="*40 + "\n")
 
-    errores_predichos = []
-    tiempos           = []
+    respuestas_guardadas = []
 
     for i, pregunta in enumerate(preguntas, start=1):
-
-        intentos       = 0
-        tiempo_total   = 0.0
 
         print(f"Pregunta {i}/{num_preguntas}")
         print(f"  {pregunta['pregunta']}\n")
 
-        while True:
+        inicio    = time.time()
+        respuesta = input("  Tu respuesta: ").strip()
+        tiempo    = round(time.time() - inicio, 2)
 
-            intentos += 1
+        print()
 
-            inicio    = time.time()
-            respuesta = input(
-                f"  Tu respuesta (intento {intentos}): "
-            ).strip()
-            tiempo_respuesta = round(time.time() - inicio, 2)
-            tiempo_total    += tiempo_respuesta
+        # Guardar respuesta para analizar al final
+        respuestas_guardadas.append({
+            "pregunta":          pregunta,
+            "respuesta_alumno":  respuesta,
+            "tiempo":            tiempo
+        })
 
-            # Verificar respuesta
-            correcta = (
-                respuesta.replace(" ", "").lower()
-                ==
-                pregunta["respuesta_correcta"]
-                    .replace(" ", "").lower()
-            )
+    # =========================
+    # ANALIZAR RESPUESTAS CON IA
+    # =========================
+    print("="*40)
+    print("  Analizando tu desempeño...\n")
 
-            if correcta:
-                print("  ✓ Correcto\n")
-                break
+    errores_predichos = []
+    tiempos           = []
 
-            else:
-                print("  ✗ Incorrecto, intenta de nuevo.\n")
+    for item in respuestas_guardadas:
 
-                if intentos >= 3:
-                    print(
-                        f"  Respuesta correcta: "
-                        f"{pregunta['respuesta_correcta']}\n"
-                    )
-                    break
+        pregunta         = item["pregunta"]
+        respuesta_alumno = item["respuesta_alumno"]
+        tiempo           = item["tiempo"]
 
-        # Predecir tipo de error con el modelo
+        correcta = (
+            respuesta_alumno.replace(" ", "").lower()
+            ==
+            pregunta["respuesta_correcta"]
+                .replace(" ", "").lower()
+        )
+
+        # El modelo predice el tipo de error
+        # basándose en el comportamiento del estudiante
         tipo_error = predecir_error(
             tipo_factorizacion=pregunta["tipo_factorizacion"],
             dificultad=pregunta["nivel"],
-            tiempo_respuesta=tiempo_total,
-            intentos=intentos
+            tiempo_respuesta=tiempo,
+            intentos=1
         )
 
         errores_predichos.append(tipo_error)
-        tiempos.append(tiempo_total)
+        tiempos.append(tiempo)
 
-        # Registrar en perfil
         student.registrar_respuesta(
             ejercicio_id=pregunta["id"],
             correcto=correcta,
-            tiempo_respuesta=tiempo_total,
+            tiempo_respuesta=tiempo,
             tipo_error=tipo_error if not correcta else None
         )
 
-        print(
-            f"  Error detectado por IA : {tipo_error}\n"
-        )
-
     # =========================
-    # CALCULAR RESULTADOS
+    # EVALUAR NIVEL
     # =========================
     tiempo_promedio = sum(tiempos) / len(tiempos)
 
@@ -185,34 +173,33 @@ def ejecutar_examen_diagnostico(
 
     student.nivel_actual = resultado["nuevo_nivel"]
 
-    # Error más frecuente predicho
-    error_frecuente = (
-        max(set(errores_predichos), key=errores_predichos.count)
-        if errores_predichos else None
+    error_frecuente = max(
+        set(errores_predichos),
+        key=errores_predichos.count
     )
 
     # =========================
     # RESULTADO FINAL
     # =========================
-    print("\n" + "="*40)
+    print("="*40)
     print("     RESULTADO DEL EXAMEN")
     print("="*40)
-    print(f"Aciertos          : {student.aciertos}/{num_preguntas}")
-    print(f"Precisión         : {resultado['precision']:.0%}")
-    print(f"Tiempo promedio   : {tiempo_promedio:.1f}s")
-    print(f"Decisión          : {resultado['decision']}")
-    print(f"Nivel asignado    : {resultado['nuevo_nivel']}")
+    print(f"Aciertos           : {student.aciertos}/{num_preguntas}")
+    print(f"Precisión          : {resultado['precision']:.0%}")
+    print(f"Tiempo promedio    : {tiempo_promedio:.1f}s")
+    print(f"Decisión           : {resultado['decision']}")
+    print(f"Nivel asignado     : {resultado['nuevo_nivel']}")
     print(f"Error más frecuente: {error_frecuente}")
     print("="*40 + "\n")
 
     return {
-        "aciertos":        student.aciertos,
-        "total":           num_preguntas,
-        "precision":       resultado["precision"],
-        "tiempo_promedio": tiempo_promedio,
-        "nivel_asignado":  resultado["nuevo_nivel"],
-        "decision":        resultado["decision"],
-        "error_frecuente": error_frecuente,
+        "aciertos":          student.aciertos,
+        "total":             num_preguntas,
+        "precision":         resultado["precision"],
+        "tiempo_promedio":   tiempo_promedio,
+        "nivel_asignado":    resultado["nuevo_nivel"],
+        "decision":          resultado["decision"],
+        "error_frecuente":   error_frecuente,
         "errores_predichos": errores_predichos
     }
 
