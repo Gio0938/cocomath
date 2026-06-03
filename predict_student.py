@@ -1,50 +1,103 @@
 import pickle
 import pandas as pd
 
-# =========================
-# CARGAR MODELO
-# =========================
-with open(
-    "models/logistic_model.pkl",
-    "rb"
-) as file:
-
-    model = pickle.load(file)
 
 # =========================
-# NUEVO ESTUDIANTE
+# CARGAR MODELO Y ARTEFACTOS
 # =========================
-student_data = {
+with open("models/logistic_model.pkl", "rb") as f:
+    model = pickle.load(f)
 
-    "dificultad": [1],
+with open("models/encoder.pkl", "rb") as f:
+    encoder = pickle.load(f)
 
-    "tiempo_respuesta": [40],
+with open("models/feature_columns.pkl", "rb") as f:
+    feature_columns = pickle.load(f)
 
-    "intentos": [2],
-
-    "tipo_factorizacion_diferencia_cuadrados": [0],
-
-    "tipo_factorizacion_factor_comun": [1],
-
-    "tipo_factorizacion_trinomio": [0],
-
-    "tipo_factorizacion_trinomio_cuadrado_perfecto": [0]
-}
 
 # =========================
-# DATAFRAME
+# FUNCIÓN DE PREDICCIÓN
 # =========================
-X_new = pd.DataFrame(
-    student_data
-)
+def predecir_error(
+    tipo_factorizacion: str,
+    dificultad:         int,
+    tiempo_respuesta:   float,
+    intentos:           int
+) -> str:
+    """
+    Predice el tipo de error de un estudiante.
+
+    Parámetros:
+        tipo_factorizacion : diferencia_cuadrados |
+                             factor_comun |
+                             trinomio |
+                             trinomio_cuadrado_perfecto
+        dificultad         : 1, 2, 3, 4 o 5
+        tiempo_respuesta   : segundos
+        intentos           : número de intentos
+
+    Retorna:
+        tipo_error : "signo" | "identificacion" | "procedimiento"
+    """
+
+    # Construir fila base
+    data = {
+        "dificultad":      [dificultad],
+        "tiempo_respuesta":[tiempo_respuesta],
+        "intentos":        [intentos]
+    }
+
+    X_new = pd.DataFrame(data)
+
+    # Agregar columnas dummy del tipo de factorización
+    tipos_posibles = [
+        col.replace("tipo_factorizacion_", "")
+        for col in feature_columns
+        if col.startswith("tipo_factorizacion_")
+    ]
+
+    for tipo in tipos_posibles:
+        col_name = f"tipo_factorizacion_{tipo}"
+        X_new[col_name] = 1 if tipo == tipo_factorizacion else 0
+
+    # Asegurar orden y columnas correctas
+    X_new = X_new.reindex(
+        columns=feature_columns,
+        fill_value=0
+    )
+
+    # Predicción
+    pred_encoded  = model.predict(X_new)
+    pred_proba    = model.predict_proba(X_new)
+    tipo_error    = encoder.inverse_transform(pred_encoded)[0]
+
+    # Probabilidades por clase
+    probabilidades = {
+        clase: round(float(prob), 4)
+        for clase, prob in zip(
+            encoder.classes_,
+            pred_proba[0]
+        )
+    }
+
+    return tipo_error, probabilidades
+
 
 # =========================
-# PREDICCIÓN
+# PRUEBA
 # =========================
-prediction = model.predict(
-    X_new
-)
+if __name__ == "__main__":
 
-print("\nPredicción realizada")
+    tipo_error, probabilidades = predecir_error(
+        tipo_factorizacion="factor_comun",
+        dificultad=1,
+        tiempo_respuesta=40.0,
+        intentos=2
+    )
 
-print(prediction)
+    print("\nPREDICCIÓN DE ERROR\n")
+    print(f"Tipo de error predicho : {tipo_error}")
+    print("\nProbabilidades por clase:")
+
+    for clase, prob in probabilidades.items():
+        print(f"  {clase}: {prob:.2%}")

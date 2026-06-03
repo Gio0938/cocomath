@@ -1,108 +1,101 @@
-import json
-import pickle
-import pandas as pd
+"""
+cocomath_ai.py
+--------------
+Orquestador principal del sistema CocoMath.
+Integra el examen diagnóstico, el perfil del estudiante
+y el motor adaptativo en un flujo completo.
+"""
 
-from learning_logic import evaluate_student
+from student_profile  import StudentProfile
+from diagnostic_exam  import ejecutar_examen_diagnostico
+from adaptive_engine  import AdaptiveEngine
 
-# =========================
-# CARGAR MODELO
-# =========================
-with open(
-    "models/logistic_model.pkl",
-    "rb"
-) as file:
-
-    model = pickle.load(file)
 
 # =========================
-# CARGAR EJERCICIOS
+# FLUJO PRINCIPAL
 # =========================
-with open(
-    "dataset/ejercicios.json",
-    "r",
-    encoding="utf-8"
-) as file:
+def iniciar_sesion(
+    student_id:       int,
+    modo_interactivo: bool = False
+):
+    """
+    Inicia una sesión completa de CocoMath para un estudiante:
 
-    ejercicios = json.load(file)
+    1. Crea el perfil del estudiante.
+    2. Ejecuta el examen diagnóstico.
+    3. Recomienda ejercicios personalizados con el motor adaptativo.
+    """
 
-# =========================
-# DATOS DEL ESTUDIANTE
-# =========================
-student_data = {
+    print("\n" + "="*40)
+    print("       BIENVENIDO A COCOMATH")
+    print("="*40)
+    print(f"Estudiante ID: {student_id}\n")
 
-    "dificultad": [1],
+    # -------------------------
+    # 1. PERFIL DEL ESTUDIANTE
+    # -------------------------
+    estudiante = StudentProfile(student_id=student_id)
 
-    "tiempo_respuesta": [45],
+    # -------------------------
+    # 2. EXAMEN DIAGNÓSTICO
+    # -------------------------
+    print("Iniciando examen diagnóstico...\n")
 
-    "intentos": [2],
+    resultados_examen = ejecutar_examen_diagnostico(
+        student=estudiante,
+        num_preguntas=10,
+        nivel=1,
+        modo_interactivo=modo_interactivo
+    )
 
-    "tipo_factorizacion_diferencia_cuadrados": [1],
+    # -------------------------
+    # 3. MOTOR ADAPTATIVO
+    # -------------------------
+    engine = AdaptiveEngine(student=estudiante)
 
-    "tipo_factorizacion_factor_comun": [0],
+    recomendados, error_predicho = engine.recomendar_ejercicios(
+        tipo_factorizacion="diferencia_cuadrados",
+        dificultad=estudiante.nivel_actual,
+        tiempo_respuesta=estudiante.tiempo_promedio,
+        intentos=2,
+        max_ejercicios=5
+    )
 
-    "tipo_factorizacion_trinomio": [0],
+    # -------------------------
+    # 4. MOSTRAR RECOMENDACIONES
+    # -------------------------
+    print("="*40)
+    print("     EJERCICIOS RECOMENDADOS")
+    print("="*40)
+    print(f"Error predicho : {error_predicho}")
+    print(f"Nivel actual   : {estudiante.nivel_actual}\n")
 
-    "tipo_factorizacion_trinomio_cuadrado_perfecto": [0]
-}
+    for i, ej in enumerate(recomendados, start=1):
+        print(f"{i}. {ej['pregunta']}")
+        print(f"   Tipo : {ej['tipo_factorizacion']}")
+        print(f"   Nivel: {ej['nivel']}\n")
 
-X_new = pd.DataFrame(student_data)
+    # -------------------------
+    # 5. RESUMEN FINAL
+    # -------------------------
+    print("="*40)
+    print("     RESUMEN DEL ESTUDIANTE")
+    print("="*40)
 
-# =========================
-# PREDICCIÓN ML
-# =========================
-prediction = model.predict(X_new)
+    for clave, valor in estudiante.resumen().items():
+        print(f"  {clave}: {valor}")
 
-predicted_error = prediction[0]
+    print("\n")
 
-print("\nERROR PREDICHO:")
-print(predicted_error)
+    return estudiante, recomendados
 
-# =========================
-# EVALUAR ESTUDIANTE
-# =========================
-nuevo_nivel = evaluate_student(
-
-    aciertos=8,
-
-    errores=2,
-
-    tiempo_promedio=45,
-
-    nivel_actual=1
-)
-
-# =========================
-# RECOMENDAR EJERCICIOS
-# =========================
-recommended_exercises = []
-
-for ejercicio in ejercicios:
-
-    if (
-
-        ejercicio["nivel"]
-        ==
-        nuevo_nivel
-
-        and
-
-        predicted_error
-        in
-        ejercicio["errores_asociados"]
-
-    ):
-
-        recommended_exercises.append(
-            ejercicio
-        )
 
 # =========================
-# RESULTADOS
+# PUNTO DE ENTRADA
 # =========================
-print("\nEJERCICIOS RECOMENDADOS\n")
+if __name__ == "__main__":
 
-for ejercicio in recommended_exercises[:5]:
-
-    print(
-        ejercicio["pregunta"]
+    iniciar_sesion(
+        student_id=1,
+        modo_interactivo=False  # Cambiar a True para uso real
     )
