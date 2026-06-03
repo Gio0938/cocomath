@@ -2,8 +2,6 @@
 cocomath_ai.py
 --------------
 Orquestador principal del sistema CocoMath.
-Integra el examen diagnóstico, el perfil del estudiante
-y el motor adaptativo en un flujo completo.
 """
 
 from student_profile  import StudentProfile
@@ -14,17 +12,7 @@ from adaptive_engine  import AdaptiveEngine
 # =========================
 # FLUJO PRINCIPAL
 # =========================
-def iniciar_sesion(
-    student_id:       int,
-    modo_interactivo: bool = False
-):
-    """
-    Inicia una sesión completa de CocoMath para un estudiante:
-
-    1. Crea el perfil del estudiante.
-    2. Ejecuta el examen diagnóstico.
-    3. Recomienda ejercicios personalizados con el motor adaptativo.
-    """
+def iniciar_sesion(student_id: int):
 
     print("\n" + "="*40)
     print("       BIENVENIDO A COCOMATH")
@@ -38,18 +26,21 @@ def iniciar_sesion(
 
     # -------------------------
     # 2. EXAMEN DIAGNÓSTICO
+    # El estudiante responde libremente.
+    # El modelo predice sus errores.
     # -------------------------
     print("Iniciando examen diagnóstico...\n")
 
     resultados_examen = ejecutar_examen_diagnostico(
         student=estudiante,
         num_preguntas=10,
-        nivel=1,
-        modo_interactivo=modo_interactivo
+        nivel=1
     )
 
     # -------------------------
     # 3. MOTOR ADAPTATIVO
+    # Usa el error frecuente real del estudiante
+    # para recomendar ejercicios personalizados.
     # -------------------------
     engine = AdaptiveEngine(student=estudiante)
 
@@ -67,8 +58,8 @@ def iniciar_sesion(
     print("="*40)
     print("     EJERCICIOS RECOMENDADOS")
     print("="*40)
-    print(f"Error predicho : {error_predicho}")
-    print(f"Nivel actual   : {estudiante.nivel_actual}\n")
+    print(f"Error frecuente detectado : {resultados_examen['error_frecuente']}")
+    print(f"Nivel actual              : {estudiante.nivel_actual}\n")
 
     for i, ej in enumerate(recomendados, start=1):
         print(f"{i}. {ej['pregunta']}")
@@ -95,7 +86,4 @@ def iniciar_sesion(
 # =========================
 if __name__ == "__main__":
 
-    iniciar_sesion(
-        student_id=1,
-        modo_interactivo=False  # Cambiar a True para uso real
-    )
+    iniciar_sesion(student_id=1)

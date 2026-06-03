@@ -26,7 +26,7 @@ def evaluate_student(
     # =========================
 
     # SUBIR NIVEL
-    if precision >= 0.80 and tiempo_promedio < 60:
+    if precision >= 0.80 and tiempo_promedio < 120:
 
         nuevo_nivel = nivel_actual + 1
         decision    = "SUBIR NIVEL"

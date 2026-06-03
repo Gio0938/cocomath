@@ -1,5 +1,8 @@
 import json
+import time
 import random
+import pickle
+import pandas as pd
 
 from student_profile import StudentProfile
 from learning_logic  import evaluate_student
@@ -15,23 +18,75 @@ with open(
 ) as f:
     ejercicios = json.load(f)
 
+# =========================
+# CARGAR ARTEFACTOS ML
+# =========================
+with open("models/logistic_model.pkl", "rb") as f:
+    model = pickle.load(f)
+
+with open("models/encoder.pkl", "rb") as f:
+    encoder = pickle.load(f)
+
+with open("models/feature_columns.pkl", "rb") as f:
+    feature_columns = pickle.load(f)
+
+
+# =========================
+# PREDECIR TIPO DE ERROR
+# =========================
+def predecir_error(
+    tipo_factorizacion: str,
+    dificultad:         int,
+    tiempo_respuesta:   float,
+    intentos:           int
+) -> str:
+
+    data = {
+        "dificultad":       [dificultad],
+        "tiempo_respuesta": [tiempo_respuesta],
+        "intentos":         [intentos]
+    }
+
+    X_new = pd.DataFrame(data)
+
+    tipos_posibles = [
+        col.replace("tipo_factorizacion_", "")
+        for col in feature_columns
+        if col.startswith("tipo_factorizacion_")
+    ]
+
+    for tipo in tipos_posibles:
+        col_name = f"tipo_factorizacion_{tipo}"
+        X_new[col_name] = (
+            1 if tipo == tipo_factorizacion else 0
+        )
+
+    X_new = X_new.reindex(
+        columns=feature_columns,
+        fill_value=0
+    )
+
+    pred       = model.predict(X_new)
+    tipo_error = encoder.inverse_transform(pred)[0]
+
+    return tipo_error
+
 
 # =========================
 # EXAMEN DIAGNÓSTICO
 # =========================
 def ejecutar_examen_diagnostico(
-    student:          StudentProfile,
-    num_preguntas:    int = 10,
-    nivel:            int = 1,
-    modo_interactivo: bool = True
+    student:       StudentProfile,
+    num_preguntas: int = 10,
+    nivel:         int = 1
 ) -> dict:
     """
-    Ejecuta el examen diagnóstico inicial para un estudiante.
-
-    Retorna un diccionario con los resultados del examen.
+    Ejecuta el examen diagnóstico.
+    El estudiante responde libremente.
+    El modelo predice el tipo de error según
+    su comportamiento (tiempo e intentos).
     """
 
-    # Filtrar ejercicios del nivel indicado
     pool = [
         ej for ej in ejercicios
         if ej["nivel"] == nivel
@@ -49,121 +104,128 @@ def ejecutar_examen_diagnostico(
     print(f"Nivel              : {nivel}")
     print("="*40 + "\n")
 
-    aciertos       = 0
-    errores_lista  = []
-    tiempos        = []
+    errores_predichos = []
+    tiempos           = []
 
     for i, pregunta in enumerate(preguntas, start=1):
 
+        intentos       = 0
+        tiempo_total   = 0.0
+
         print(f"Pregunta {i}/{num_preguntas}")
-        print(f"  {pregunta['pregunta']}")
+        print(f"  {pregunta['pregunta']}\n")
 
-        if modo_interactivo:
+        while True:
 
-            import time
+            intentos += 1
 
-            inicio   = time.time()
-            respuesta = input("  Tu respuesta: ").strip()
-            tiempo   = round(time.time() - inicio, 2)
+            inicio    = time.time()
+            respuesta = input(
+                f"  Tu respuesta (intento {intentos}): "
+            ).strip()
+            tiempo_respuesta = round(time.time() - inicio, 2)
+            tiempo_total    += tiempo_respuesta
 
-        else:
-            # Modo simulación (para pruebas automáticas)
-            respuesta = pregunta["respuesta_correcta"]
-            tiempo    = random.uniform(30, 90)
+            # Verificar respuesta
+            correcta = (
+                respuesta.replace(" ", "").lower()
+                ==
+                pregunta["respuesta_correcta"]
+                    .replace(" ", "").lower()
+            )
 
-        tiempos.append(tiempo)
+            if correcta:
+                print("  ✓ Correcto\n")
+                break
 
-        correcto = (
-            respuesta.replace(" ", "").lower()
-            ==
-            pregunta["respuesta_correcta"].replace(" ", "").lower()
+            else:
+                print("  ✗ Incorrecto, intenta de nuevo.\n")
+
+                if intentos >= 3:
+                    print(
+                        f"  Respuesta correcta: "
+                        f"{pregunta['respuesta_correcta']}\n"
+                    )
+                    break
+
+        # Predecir tipo de error con el modelo
+        tipo_error = predecir_error(
+            tipo_factorizacion=pregunta["tipo_factorizacion"],
+            dificultad=pregunta["nivel"],
+            tiempo_respuesta=tiempo_total,
+            intentos=intentos
         )
 
-        if correcto:
-            aciertos += 1
-            print("  ✓ Correcto\n")
-            student.registrar_respuesta(
-                ejercicio_id=pregunta["id"],
-                correcto=True,
-                tiempo_respuesta=tiempo
-            )
+        errores_predichos.append(tipo_error)
+        tiempos.append(tiempo_total)
 
-        else:
-            # Detectar tipo de error probable
-            tipo_error = pregunta["errores_asociados"][0]
-            errores_lista.append(tipo_error)
+        # Registrar en perfil
+        student.registrar_respuesta(
+            ejercicio_id=pregunta["id"],
+            correcto=correcta,
+            tiempo_respuesta=tiempo_total,
+            tipo_error=tipo_error if not correcta else None
+        )
 
-            print(f"  ✗ Incorrecto")
-            print(
-                f"  Respuesta correcta: "
-                f"{pregunta['respuesta_correcta']}\n"
-            )
-            student.registrar_respuesta(
-                ejercicio_id=pregunta["id"],
-                correcto=False,
-                tiempo_respuesta=tiempo,
-                tipo_error=tipo_error
-            )
+        print(
+            f"  Error detectado por IA : {tipo_error}\n"
+        )
 
     # =========================
     # CALCULAR RESULTADOS
     # =========================
-    tiempo_promedio = (
-        sum(tiempos) / len(tiempos)
-        if tiempos else 0
-    )
+    tiempo_promedio = sum(tiempos) / len(tiempos)
 
     resultado = evaluate_student(
-        aciertos=aciertos,
-        errores=num_preguntas - aciertos,
+        aciertos=student.aciertos,
+        errores=student.errores,
         tiempo_promedio=tiempo_promedio,
         nivel_actual=nivel
     )
 
     student.nivel_actual = resultado["nuevo_nivel"]
 
+    # Error más frecuente predicho
+    error_frecuente = (
+        max(set(errores_predichos), key=errores_predichos.count)
+        if errores_predichos else None
+    )
+
     # =========================
-    # MOSTRAR RESULTADO FINAL
+    # RESULTADO FINAL
     # =========================
     print("\n" + "="*40)
     print("     RESULTADO DEL EXAMEN")
     print("="*40)
-    print(f"Aciertos        : {aciertos}/{num_preguntas}")
-    print(f"Precisión       : {resultado['precision']:.0%}")
-    print(f"Tiempo promedio : {tiempo_promedio:.1f}s")
-    print(f"Decisión        : {resultado['decision']}")
-    print(f"Nivel asignado  : {resultado['nuevo_nivel']}")
-
-    if errores_lista:
-        error_comun = max(
-            set(errores_lista),
-            key=errores_lista.count
-        )
-        print(f"Error frecuente : {error_comun}")
-
+    print(f"Aciertos          : {student.aciertos}/{num_preguntas}")
+    print(f"Precisión         : {resultado['precision']:.0%}")
+    print(f"Tiempo promedio   : {tiempo_promedio:.1f}s")
+    print(f"Decisión          : {resultado['decision']}")
+    print(f"Nivel asignado    : {resultado['nuevo_nivel']}")
+    print(f"Error más frecuente: {error_frecuente}")
     print("="*40 + "\n")
 
     return {
-        "aciertos":       aciertos,
-        "total":          num_preguntas,
-        "precision":      resultado["precision"],
-        "tiempo_promedio":tiempo_promedio,
-        "nivel_asignado": resultado["nuevo_nivel"],
-        "decision":       resultado["decision"],
-        "errores":        errores_lista
+        "aciertos":        student.aciertos,
+        "total":           num_preguntas,
+        "precision":       resultado["precision"],
+        "tiempo_promedio": tiempo_promedio,
+        "nivel_asignado":  resultado["nuevo_nivel"],
+        "decision":        resultado["decision"],
+        "error_frecuente": error_frecuente,
+        "errores_predichos": errores_predichos
     }
 
 
 # =========================
-# PRUEBA (modo simulación)
+# PRUEBA
 # =========================
 if __name__ == "__main__":
 
-    estudiante = StudentProfile(student_id=42)
+    estudiante = StudentProfile(student_id=1)
 
-    resultados = ejecutar_examen_diagnostico(
+    ejecutar_examen_diagnostico(
         student=estudiante,
         num_preguntas=10,
-        nivel=1,
-        modo_interactivo=True # True para modo real en consola
+        nivel=1
     )
