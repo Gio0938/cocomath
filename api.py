@@ -1,11 +1,3 @@
-"""
-api.py
-------
-API REST de CocoMath construida con FastAPI.
-Expone endpoints para predicción de errores,
-recomendación de ejercicios y gestión de sesiones.
-"""
-
 import json
 import pickle
 import pandas as pd
