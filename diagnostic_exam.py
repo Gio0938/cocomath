@@ -73,36 +73,64 @@ def predecir_error(
 
 
 # =========================
+# DETECTAR NIVEL DEL ESTUDIANTE
+# =========================
+def detectar_nivel(aciertos_por_nivel: dict) -> int:
+    """
+    Determina el nivel inicial del estudiante
+    basándose en cuántos ejercicios acertó por nivel.
+
+    Lógica:
+    - Si acertó >= 1 ejercicio de nivel 5 → nivel 4
+    - Si acertó >= 1 ejercicio de nivel 4 → nivel 3
+    - Si acertó >= 1 ejercicio de nivel 3 → nivel 2
+    - Si acertó >= 1 ejercicio de nivel 2 → nivel 1
+    - Si solo acertó nivel 1 o ninguno    → nivel 1
+    """
+    for nivel in [5, 4, 3, 2]:
+        if aciertos_por_nivel.get(nivel, 0) >= 1:
+            return nivel - 1 if nivel > 1 else 1
+
+    return 1
+
+
+# =========================
 # EXAMEN DIAGNÓSTICO
 # =========================
 def ejecutar_examen_diagnostico(
     student:       StudentProfile,
-    num_preguntas: int = 10,
-    nivel:         int = 1
+    num_preguntas: int = 10
 ) -> dict:
+    """
+    Selecciona 2 ejercicios de cada nivel (1-5)
+    de forma aleatoria para ubicar al estudiante
+    en el nivel correcto.
+    """
 
-    pool = [
-        ej for ej in ejercicios
-        if ej["nivel"] == nivel
-    ]
+    # Seleccionar 2 ejercicios por nivel (10 total)
+    preguntas = []
 
-    if len(pool) < num_preguntas:
-        num_preguntas = len(pool)
+    por_nivel = num_preguntas // 5  # 2 por nivel
 
-    preguntas = random.sample(pool, num_preguntas)
+    for nivel in range(1, 6):
+        pool = [ej for ej in ejercicios if ej["nivel"] == nivel]
+        muestra = random.sample(pool, min(por_nivel, len(pool)))
+        preguntas.extend(muestra)
+
+    # Mezclar para que no estén ordenados por nivel
+    random.shuffle(preguntas)
 
     print("\n" + "="*40)
     print("     EXAMEN DIAGNÓSTICO COCOMATH")
     print("="*40)
-    print(f"Total de preguntas : {num_preguntas}")
-    print(f"Nivel              : {nivel}")
+    print(f"Total de preguntas : {len(preguntas)}")
     print("="*40 + "\n")
 
     respuestas_guardadas = []
 
     for i, pregunta in enumerate(preguntas, start=1):
 
-        print(f"Pregunta {i}/{num_preguntas}")
+        print(f"Pregunta {i}/{len(preguntas)}")
         print(f"  {pregunta['pregunta']}\n")
 
         inicio    = time.time()
@@ -111,11 +139,10 @@ def ejecutar_examen_diagnostico(
 
         print()
 
-        # Guardar respuesta para analizar al final
         respuestas_guardadas.append({
-            "pregunta":          pregunta,
-            "respuesta_alumno":  respuesta,
-            "tiempo":            tiempo
+            "pregunta":         pregunta,
+            "respuesta_alumno": respuesta,
+            "tiempo":           tiempo
         })
 
     # =========================
@@ -124,8 +151,9 @@ def ejecutar_examen_diagnostico(
     print("="*40)
     print("  Analizando tu desempeño...\n")
 
-    errores_predichos = []
-    tiempos           = []
+    errores_predichos  = []
+    tiempos            = []
+    aciertos_por_nivel = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
     for item in respuestas_guardadas:
 
@@ -140,8 +168,9 @@ def ejecutar_examen_diagnostico(
                 .replace(" ", "").lower()
         )
 
-        # El modelo predice el tipo de error
-        # basándose en el comportamiento del estudiante
+        if correcta:
+            aciertos_por_nivel[pregunta["nivel"]] += 1
+
         tipo_error = predecir_error(
             tipo_factorizacion=pregunta["tipo_factorizacion"],
             dificultad=pregunta["nivel"],
@@ -160,18 +189,12 @@ def ejecutar_examen_diagnostico(
         )
 
     # =========================
-    # EVALUAR NIVEL
+    # DETECTAR NIVEL
     # =========================
+    nivel_detectado = detectar_nivel(aciertos_por_nivel)
+    student.nivel_actual = nivel_detectado
+
     tiempo_promedio = sum(tiempos) / len(tiempos)
-
-    resultado = evaluate_student(
-        aciertos=student.aciertos,
-        errores=student.errores,
-        tiempo_promedio=tiempo_promedio,
-        nivel_actual=nivel
-    )
-
-    student.nivel_actual = resultado["nuevo_nivel"]
 
     error_frecuente = max(
         set(errores_predichos),
@@ -184,23 +207,25 @@ def ejecutar_examen_diagnostico(
     print("="*40)
     print("     RESULTADO DEL EXAMEN")
     print("="*40)
-    print(f"Aciertos           : {student.aciertos}/{num_preguntas}")
-    print(f"Precisión          : {resultado['precision']:.0%}")
+    print(f"Aciertos           : {student.aciertos}/{len(preguntas)}")
+    print(f"Precisión          : {student.precision:.0%}")
     print(f"Tiempo promedio    : {tiempo_promedio:.1f}s")
-    print(f"Decisión           : {resultado['decision']}")
-    print(f"Nivel asignado     : {resultado['nuevo_nivel']}")
+    print(f"Nivel asignado     : {nivel_detectado}")
     print(f"Error más frecuente: {error_frecuente}")
+    print("\nAciertos por nivel:")
+    for nivel, aciertos in aciertos_por_nivel.items():
+        print(f"  Nivel {nivel}: {aciertos}/{por_nivel}")
     print("="*40 + "\n")
 
     return {
         "aciertos":          student.aciertos,
-        "total":             num_preguntas,
-        "precision":         resultado["precision"],
+        "total":             len(preguntas),
+        "precision":         student.precision,
         "tiempo_promedio":   tiempo_promedio,
-        "nivel_asignado":    resultado["nuevo_nivel"],
-        "decision":          resultado["decision"],
+        "nivel_asignado":    nivel_detectado,
         "error_frecuente":   error_frecuente,
-        "errores_predichos": errores_predichos
+        "errores_predichos": errores_predichos,
+        "aciertos_por_nivel": aciertos_por_nivel
     }
 
 
@@ -213,6 +238,5 @@ if __name__ == "__main__":
 
     ejecutar_examen_diagnostico(
         student=estudiante,
-        num_preguntas=10,
-        nivel=1
+        num_preguntas=10
     )
