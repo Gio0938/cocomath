@@ -118,23 +118,40 @@ def predecir_error(
 # =========================
 # DETECTAR NIVEL DEL ESTUDIANTE
 # =========================
-def detectar_nivel(aciertos_por_nivel: dict) -> int:
+def detectar_nivel(
+    aciertos_por_nivel: dict,
+    precision_general:  float
+) -> int:
     """
-    Determina el nivel inicial del estudiante
-    basándose en cuántos ejercicios acertó por nivel.
+    Determina el nivel inicial del estudiante.
 
-    Lógica:
-    - Si acertó >= 1 ejercicio de nivel 5 → nivel 4
-    - Si acertó >= 1 ejercicio de nivel 4 → nivel 3
-    - Si acertó >= 1 ejercicio de nivel 3 → nivel 2
-    - Si acertó >= 1 ejercicio de nivel 2 → nivel 1
-    - Si solo acertó nivel 1 o ninguno    → nivel 1
+    Precisión < 50%          → nivel 1 (reforzar base)
+    Precisión 50% - 69%      → nivel más BAJO donde acertó algo
+                               (consolidar antes de avanzar)
+    Precisión >= 70%         → nivel más ALTO donde acertó algo - 1
+                               (listo para avanzar)
     """
-    for nivel in [5, 4, 3, 2]:
-        if aciertos_por_nivel.get(nivel, 0) >= 1:
-            return nivel - 1 if nivel > 1 else 1
 
-    return 1
+    # Precisión insuficiente → nivel 1 siempre
+    if precision_general < 0.50:
+        return 1
+
+    niveles_acertados = [
+        nivel for nivel, aciertos
+        in aciertos_por_nivel.items()
+        if aciertos >= 1
+    ]
+
+    if not niveles_acertados:
+        return 1
+
+    # Precisión media → asignar nivel más bajo acertado
+    if precision_general < 0.70:
+        return min(niveles_acertados)
+
+    # Precisión alta → asignar nivel más alto acertado - 1
+    nivel_maximo = max(niveles_acertados)
+    return max(1, nivel_maximo - 1)
 
 
 # =========================
@@ -232,7 +249,12 @@ def ejecutar_examen_diagnostico(
     # =========================
     # DETECTAR NIVEL
     # =========================
-    nivel_detectado = detectar_nivel(aciertos_por_nivel)
+    precision_general = student.aciertos / len(preguntas)
+
+    nivel_detectado = detectar_nivel(
+        aciertos_por_nivel,
+        precision_general
+    )
     student.nivel_actual = nivel_detectado
 
     tiempo_promedio = sum(tiempos) / len(tiempos)
